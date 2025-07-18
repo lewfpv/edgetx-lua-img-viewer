@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>Lua BMP Nézegető (1-bit PNG exporttal)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/fast-png/lib/fast-png.min.js"></script>
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #2c2f33;
+            color: #eeeeee;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #ffffff;
+        }
+        #drop-zone {
+            border: 3px dashed #7289da;
+            border-radius: 12px;
+            padding: 50px 30px;
+            margin: 20px auto;
+            max-width: 800px;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        }
+        #drop-zone.dragover {
+            background-color: #4f545c;
+            border-color: #ffffff;
+        }
+        #canvases-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 25px;
+            justify-content: center;
+            padding-top: 20px;
+        }
+        .canvas-wrapper {
+            border: 1px solid #4f545c;
+            padding: 15px;
+            background-color: #36393f;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+        }
+        .canvas-wrapper p {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        canvas {
+            background-color: #99aab5; /* A 'fehér' pixelek színe */
+            image-rendering: pixelated; /* Éles pixelek nagyításkor */
+            width: 256px; /* Nagyobb méret a jobb láthatóságért */
+            height: 128px;
+            border-radius: 4px;
+        }
+        .download-btn {
+            display: block;
+            width: 100%;
+            padding: 10px 12px;
+            margin-top: 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #ffffff;
+            background-color: #5865f2;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .download-btn:hover {
+            background-color: #4752c4;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🖼️ Lua 128x64 Képnézegető</h1>
+    <div id="drop-zone">
+        <p>Húzz ide egy `*_bmp.lua` fájlt a megjelenítéshez</p>
+    </div>
+    <div id="canvases-container"></div>
+
+    <script>
+        // A fast-png könyvtárat a 'fastPNG' globális változón keresztül érjük el
+        const dropZone = document.getElementById('drop-zone');
+        const container = document.getElementById('canvases-container');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('_bmp.lua')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        parseAndDraw(event.target.result);
+                    } catch (err) {
+                        alert('Hiba a fájl feldolgozása közben: ' + err.message);
+                        console.error(err);
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                alert('Kérlek, egy `*_bmp.lua` kiterjesztésű fájlt húzz ide.');
+            }
+        });
+
+        function parseAndDraw(luaContent) {
+            let jsContent = luaContent
+                .replace(/--.*$/gm, '')
+                .replace(/local\s+images\s*=\s*/, '')
+                .replace('return images', '')
+                .replace(/\{/g, '[')
+                .replace(/\}/g, ']')
+                .trim();
+
+            const imagesData = new Function(`return ${jsContent}`)();
+
+            container.innerHTML = '';
+            
+            if (!Array.isArray(imagesData) || imagesData.length === 0) {
+                alert("Nem található kép adat a fájlban, vagy a formátum érvénytelen.");
+                return;
+            }
+
+            imagesData.forEach((imageData, index) => {
+                if (!Array.isArray(imageData) || imageData.length === 0) return;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'canvas-wrapper';
+
+                const title = document.createElement('p');
+                title.textContent = `Kép #${index + 1}`;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 64;
+
+                const downloadButton = document.createElement('button');
+                downloadButton.textContent = 'Letöltés (1-bit PNG)';
+                downloadButton.className = 'download-btn';
+
+                downloadButton.addEventListener('click', () => {
+                    downloadAs1BitPNG(imageData, canvas.width, canvas.height, `kep_${index + 1}_1bit.png`);
+                });
+                
+                wrapper.appendChild(title);
+                wrapper.appendChild(canvas);
+                wrapper.appendChild(downloadButton);
+                container.appendChild(wrapper);
+
+                drawImageOnCanvas(canvas, imageData);
+            });
+        }
+        
+        function downloadAs1BitPNG(imageData, width, height, filename) {
+            const flatPixelData = new Uint8Array(width * height);
+            for (let y = 0; y < height; y++) {
+                const row = imageData[y] || [];
+                for (let byteIndex = 0; byteIndex < width / 8; byteIndex++) {
+                    const byte = row[byteIndex] || 0;
+                    for (let bitIndex = 0; bitIndex < 8; bitIndex++) {
+                        const x = byteIndex * 8 + bitIndex;
+                        const isBlack = (byte & (1 << (7 - bitIndex))) !== 0;
+                        flatPixelData[y * width + x] = isBlack ? 0 : 1;
+                    }
+                }
+            }
+
+            const pngBuffer = fastPNG.encode({
+                width: width,
+                height: height,
+                data: flatPixelData,
+                depth: 1,
+                palette: [[0, 0, 0], [255, 255, 255]]
+            });
+
+            const blob = new Blob([pngBuffer], {type: "image/png"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function drawImageOnCanvas(canvas, imageData) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000000';
+
+            for (let y = 0; y < imageData.length && y < canvas.height; y++) {
+                const row = imageData[y];
+                for (let byteIndex = 0; byteIndex < row.length && byteIndex < (canvas.width / 8); byteIndex++) {
+                    const byte = row[byteIndex];
+                    for (let bitIndex = 0; bitIndex < 8; bitIndex++) {
+                        if ((byte & (1 << (7 - bitIndex))) !== 0) {
+                            const x = byteIndex * 8 + bitIndex;
+                            ctx.fillRect(x, y, 1, 1);
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+</body>
+</html>
