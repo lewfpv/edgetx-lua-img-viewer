@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to Bitmap Converter</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #2c2c2c; /* Dark background */
+            color: #e0e0e0; /* Light text */
+        }
+        #drop-area {
+            border: 2px dashed #666; /* Lighter dashed border */
+            border-radius: 12px;
+            width: 80%;
+            max-width: 600px;
+            padding: 40px;
+            text-align: center;
+            font-size: 1.2em;
+            color: #bbb; /* Slightly darker text for instruction */
+            cursor: pointer;
+            background-color: #3a3a3a; /* Darker panel background */
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        #drop-area.highlight {
+            background-color: #4a4a4a;
+            border-color: #888;
+        }
+        button {
+            margin-top: 25px;
+            padding: 14px 30px;
+            font-size: 1.1em;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        #output-container {
+            margin-top: 35px;
+            width: 80%;
+            max-width: 700px; /* Slightly wider for output */
+            background-color: #3a3a3a;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+        #output {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Fira Code', 'Cascadia Code', monospace; /* Monospace font for code */
+            font-size: 0.9em;
+            max-height: 450px;
+            overflow-y: auto;
+            border: 1px solid #555;
+            padding: 20px;
+            background-color: #252525; /* Even darker for code block */
+            border-radius: 8px;
+            color: #c0c0c0; /* Light grey for code text */
+            line-height: 1.4;
+        }
+        h1, h2 {
+            color: #007bff; /* Accent color for headings */
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+        }
+        p {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+        .file-list {
+            margin-top: 20px;
+            text-align: left;
+            font-size: 0.9em;
+            color: #ccc;
+            max-height: 120px; /* Limit height for many files */
+            overflow-y: auto;
+            padding-right: 10px; /* Space for scrollbar */
+        }
+        .file-list p {
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px dotted #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .file-list p:last-child {
+            border-bottom: none;
+        }
+        .file-list p span {
+            font-weight: bold;
+            color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image to Bitmap Converter</h1>
+    <div id="drop-area">
+        Drag & Drop your images here, or click to browse!
+        <input type="file" id="fileElem" multiple accept="image/*" style="display: none;">
+        <div class="file-list" id="selected-files"></div>
+    </div>
+    <button id="convert-button" disabled>Convert and Download</button>
+
+    <div id="output-container">
+        <h2>Result (multi_bmp.lua)</h2>
+        <pre id="output"></pre>
+    </div>
+
+    <script>
+        const dropArea = document.getElementById('drop-area');
+        const fileElem = document.getElementById('fileElem');
+        const selectedFilesDiv = document.getElementById('selected-files');
+        const convertButton = document.getElementById('convert-button');
+        const outputContainer = document.getElementById('output-container');
+        const outputPre = document.getElementById('output');
+        let filesToProcess = [];
+
+        // Prevent default drag behaviors
+        ;['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Highlight drop area when dragging over
+        ;['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+
+        ;['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            dropArea.classList.add('highlight');
+        }
+
+        function unhighlight() {
+            dropArea.classList.remove('highlight');
+        }
+
+        // Handle dropped files
+        dropArea.addEventListener('drop', handleDrop, false);
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        // Handle click to select files
+        dropArea.addEventListener('click', () => {
+            fileElem.click();
+        });
+
+        fileElem.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            filesToProcess = [...files];
+            selectedFilesDiv.innerHTML = '<h4>Selected Files:</h4>';
+            if (filesToProcess.length > 0) {
+                filesToProcess.forEach(file => {
+                    selectedFilesDiv.innerHTML += `<p><span>${file.name}</span> (${(file.size / 1024).toFixed(2)} KB)</p>`;
+                });
+                convertButton.disabled = false;
+            } else {
+                selectedFilesDiv.innerHTML = '';
+                convertButton.disabled = true;
+            }
+        }
+
+        convertButton.addEventListener('click', async () => {
+            if (filesToProcess.length === 0) {
+                alert('No images selected for conversion!');
+                return;
+            }
+
+            const luaLines = [];
+            luaLines.push("-- Autogenerated multiple image bitmap");
+            luaLines.push("local images = {");
+
+            for (const file of filesToProcess) {
+                if (!file.type.startsWith('image/')) {
+                    console.warn(`Skipping non-image file: ${file.name}`);
+                    continue;
+                }
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+
+                await new Promise(resolve => {
+                    img.onload = () => {
+                        luaLines.push(`  {  -- ${file.name}`);
+                        const convertedRows = convertImage(img);
+                        luaLines.push(...convertedRows);
+                        luaLines.push("  },");
+                        URL.revokeObjectURL(img.src);
+                        resolve();
+                    };
+                    img.onerror = () => {
+                        console.error(`Failed to load image: ${file.name}`);
+                        URL.revokeObjectURL(img.src);
+                        resolve();
+                    };
+                });
+            }
+            luaLines.push("}\nreturn images");
+
+            const outputContent = luaLines.join('\n');
+            outputPre.textContent = outputContent;
+            outputContainer.style.display = 'block';
+
+            // Download file
+            const blob = new Blob([outputContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'multi_bmp.lua';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        function convertImage(imgElement) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = 128;
+            canvas.height = 64;
+
+            ctx.drawImage(imgElement, 0, 0, 128, 64);
+
+            const imageData = ctx.getImageData(0, 0, 128, 64);
+            const pixels = imageData.data;
+
+            const bmpRows = [];
+
+            for (let y = 0; y < 64; y++) {
+                const row = [];
+                for (let x = 0; x < 128; x += 8) {
+                    let byte = 0;
+                    for (let b = 0; b < 8; b++) {
+                        if (x + b < 128) {
+                            const i = ((y * 128) + (x + b)) * 4;
+                            const r = pixels[i];
+                            const g = pixels[i + 1];
+                            const bb = pixels[i + 2];
+
+                            const grayscale = (r + g + bb) / 3;
+
+                            // If pixel is dark (below threshold), set the bit
+                            // Mimics Python's `pixels[x + b, y] == 0` for black pixels
+                            if (grayscale < 128) {
+                                byte |= (1 << (7 - b));
+                            }
+                        }
+                    }
+                    row.push(`0x${byte.toString(16).toUpperCase().padStart(2, '0')}`);
+                }
+                bmpRows.push(`  {${row.join(', ')}},`);
+            }
+            return bmpRows;
+        }
+    </script>
+</body>
+</html>
