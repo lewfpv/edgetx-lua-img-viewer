@@ -2,7 +2,7 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <title>Lua BMP Nézegető (1-bit PNG exporttal)</title>
+    <title>Multi Lua viewer</title>
     
     <script src="https://cdn.jsdelivr.net/npm/fast-png/lib/fast-png.min.js"></script>
     
@@ -118,7 +118,7 @@
                 };
                 reader.readAsText(file);
             } else {
-                alert('Kérlek, egy `*_bmp.lua` kiterjesztésű fájlt húzz ide.');
+                alert('Drop `*_bmp.lua` file here.');
             }
         });
 
@@ -136,7 +136,7 @@
             container.innerHTML = '';
             
             if (!Array.isArray(imagesData) || imagesData.length === 0) {
-                alert("Nem található kép adat a fájlban, vagy a formátum érvénytelen.");
+                alert("Pic not found or invalid.");
                 return;
             }
 
@@ -147,14 +147,14 @@
                 wrapper.className = 'canvas-wrapper';
 
                 const title = document.createElement('p');
-                title.textContent = `Kép #${index + 1}`;
+                title.textContent = `Pic #${index + 1}`;
 
                 const canvas = document.createElement('canvas');
                 canvas.width = 128;
                 canvas.height = 64;
 
                 const downloadButton = document.createElement('button');
-                downloadButton.textContent = 'Letöltés (1-bit PNG)';
+                downloadButton.textContent = 'Download (1-bit PNG)';
                 downloadButton.className = 'download-btn';
 
                 downloadButton.addEventListener('click', () => {
